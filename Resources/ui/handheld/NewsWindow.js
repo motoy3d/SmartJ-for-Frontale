@@ -65,7 +65,13 @@ function NewsWindow(tabGroup, teamId, teamName) {
     });
     if (teamId == config.teamId) {	//自分のチームの時
         self.rightNavButton = configButton;
-        self.leftNavButton = otherTeamButton;
+        if ("true" == Ti.App.isOtherTeamNewsFeatureEnable) {
+	        if (util.isiOS()) {
+	        	self.leftNavButton = otherTeamButton;
+	        } else {
+	        	
+	        }
+        }
         self.barColor = style.common.barColor;
     } else {
     	self.barColor = "#ccc";
@@ -74,44 +80,40 @@ function NewsWindow(tabGroup, teamId, teamName) {
     }
 
     // 広告
-    var ad = require('net.nend');
     var adViewContainer = Ti.UI.createView (style.news.adViewContainer);
     var adView;
-    if(Ti.Platform.osname === 'android'){        
-        // for Android
-        // Icon Layout type. 
-        if(Ti.App.adType == 1) {//アイコン
-            adView = ad.createView ({
-                spotId: config.nendSpotIdAndroid,
-                apiKey: config.nendApiKeyAndroid,
-                adType:'icon',
-                orientation:'horizontal',
-                width: 320,
-                height: 75,
-                top: 5,
-                iconCount: 4
-            });
-        } else if(Ti.App.adType == 2) {    //バナー
-            adView = ad.createView ({
-                spotId: config.nendSpotIdAndroidBanner,
-                apiKey: config.nendApiKeyAndroidBanner,
-                top: 0,
-                isAdjust: true
-            });
+    if(Ti.Platform.osname === 'android'){
+		//4系でエラーになるため広告非表示
+		if (Ti.Platform.version.indexOf("4") != 0) {        
+		    var ad = require('net.nend');
+	        // for Android
+	        // Icon Layout type. 
+	        if(Ti.App.adType == 1) {//アイコン
+	            adView = ad.createView ({
+	                spotId: config.nendSpotIdAndroid,
+	                apiKey: config.nendApiKeyAndroid,
+	                adType:'icon',
+	                orientation:'horizontal',
+	                width: 320,
+	                height: 75,
+	                top: 5,
+	                iconCount: 4
+	            });
+	        } else if(Ti.App.adType == 2) {    //バナー
+	            adView = ad.createView ({
+	                spotId: config.nendSpotIdAndroidBanner,
+	                apiKey: config.nendApiKeyAndroidBanner,
+	                top: 0,
+	                isAdjust: true
+	            });
+	        }
         }
     } else {
+	    var ad = require('net.nend');
         // for iPhone
-        if(Ti.App.adType == 1) {//アイコン
-            Ti.API.info('////アイコン広告////');
-            adView = ad.createIconsView (style.news.adViewIPhoneIcon);
-            adView.spotId = config.nendSpotIdIPhoneIcon;
-            adView.apiKey = config.nendApiKeyIPhoneIcon;
-        } else if(Ti.App.adType == 2) {//バナー
-            Ti.API.info('////バナー広告////');
-            adView = ad.createView (style.news.adViewIPhoneBanner);
-            adView.spotId = config.nendSpotIdIPhoneBanner;
-            adView.apiKey = config.nendApiKeyIPhoneBanner;
-        }
+        adView = ad.createView (style.news.adViewIPhoneBanner);
+        adView.spotId = config.nendSpotIdIPhoneBanner;
+        adView.apiKey = config.nendApiKeyIPhoneBanner;
     }
     if (adView) {
         // 2. Add Event Listener.
@@ -121,7 +123,7 @@ function NewsWindow(tabGroup, teamId, teamName) {
         });
         // 受信エラー通知
         adView.addEventListener('error',function(e){
-            Ti.API.info('広告受信エラー');
+            Ti.API.info('広告受信エラー:' + util.toString(e));
             adViewContainer.setHeight(0);
             adView.setHeight(0);
             listView.setTop(0);
@@ -139,6 +141,7 @@ function NewsWindow(tabGroup, teamId, teamName) {
             self.add(adViewContainer);
         }
     }
+    
     // インジケータ
     var indicator = Ti.UI.createActivityIndicator({
     	style: util.isiOS()? Ti.UI.ActivityIndicatorStyle.DARK : Ti.UI.ActivityIndicatorStyle.BIG
@@ -193,6 +196,9 @@ function NewsWindow(tabGroup, teamId, teamName) {
             if(e.bindId && e.bindId == 'refreshBtn') {
                 loadFeed(news, "newerEntries");  //最新をロード
             }
+            else if(e.bindId && e.bindId == 'otherTeamBtn') {
+                openOtherTeamWin();
+            }
             else if(e.bindId && e.bindId == 'configBtn') {
                 if(configButtonClicked) {return;}
                 try {
@@ -220,6 +226,7 @@ function NewsWindow(tabGroup, teamId, teamName) {
                 Ti.API.info('ニュース詳細画面オープン処理中のためブロック');
                 return;
             }
+            Ti.App.Analytics.trackPageview('/newsDetail');
             isOpeningNews = true;
             var item = listView.sections[0].items[itemIndex];
             // 行背景色変更
@@ -232,42 +239,46 @@ function NewsWindow(tabGroup, teamId, teamName) {
             visitedUrls.push(item.link);
             lastSelectedRow = itemIndex;
             news.saveVisitedUrl(item.link);
-            webData = {
-                title : item.pageTitle
-                ,titleFull : item.pageTitleFull
-                ,siteName : item.fullSiteName
-                ,link : item.link
-                ,content : item.content
-                ,image : item.image
-                ,pubDate : item.pubDate
-                ,navBarHidden : true
-                ,toolbarVisible : true
-                ,isBlockReportEnable : true
-            };
-
-            var webWindow = new WebWindow(webData,
-				{ //ブロックサイトをリストから削除するcallback
-	                removeBlockedSite: function(site) {
-	                	//alert("removeBlockedSite = " + site);
-	                	var items = listView.sections[0].items;
-	                	Ti.API.info('items.length 1 = ' + items.length);
-	                	for(var i=0; i<items.length; i++) {
-	                		//Ti.API.info(i + ' 🌟リンク ' + items[i].link);
-	                		if (items[i].link.indexOf(site) == 0) {
-		                		Ti.API.info(i + ' 削除 ' + items[i].link);
-	                			listView.sections[0].deleteItemsAt(i, 1);
-	                			i--;
-	                			items = listView.sections[0].items;
-	                			//Ti.API.info('items.length 2 = ' + items.length);
-	                		}
-	                	}
-	                }
-	            }            	
-        	);
-            //TODO 黒いスペースができてしまうTiのバグ https://jira.appcelerator.org/browse/TIMOB-16069
-            //webWindow.tabBarHidden = true;
-            tabGroup.activeTab.open(webWindow, {animated: true});
-            Ti.App.Analytics.trackPageview('/newsDetail');
+            
+            if (util.isAndroid()) {
+				Ti.Platform.openURL(item.link);
+            } else {
+	            webData = {
+	                title : item.pageTitle
+	                ,titleFull : item.pageTitleFull
+	                ,siteName : item.fullSiteName
+	                ,link : item.link
+	                ,content : item.content
+	                ,image : item.image
+	                ,pubDate : item.pubDate
+	                ,navBarHidden : true
+	                ,toolbarVisible : true
+	                ,isBlockReportEnable : true
+	            };
+	
+	            var webWindow = new WebWindow(webData,
+					{ //ブロックサイトをリストから削除するcallback
+		                removeBlockedSite: function(site) {
+		                	//alert("removeBlockedSite = " + site);
+		                	var items = listView.sections[0].items;
+		                	Ti.API.info('items.length 1 = ' + items.length);
+		                	for(var i=0; i<items.length; i++) {
+		                		//Ti.API.info(i + ' 🌟リンク ' + items[i].link);
+		                		if (items[i].link.indexOf(site) == 0) {
+			                		Ti.API.info(i + ' 削除 ' + items[i].link);
+		                			listView.sections[0].deleteItemsAt(i, 1);
+		                			i--;
+		                			items = listView.sections[0].items;
+		                			//Ti.API.info('items.length 2 = ' + items.length);
+		                		}
+		                	}
+		                }
+		            }            	
+	        	);
+	            //TODO 黒いスペースができてしまうTiのバグ https://jira.appcelerator.org/browse/TIMOB-16069
+	            //webWindow.tabBarHidden = true;
+	            tabGroup.activeTab.open(webWindow, {animated: true});
+            }
         } finally {
             isOpeningNews = false;
         }
@@ -380,7 +391,9 @@ function NewsWindow(tabGroup, teamId, teamName) {
                             } else if(Ti.App.adType == 2){//バナー
                                 //Ti.API.info('★バナー広告');
                                 if (util.isAndroid()) {
-                                    listView.top = 70; // 元は50
+                                	if (Ti.Platform.version.indexOf("4") != 0) {	//4系でnendがエラーになるため
+                                    	listView.top = 70; // 元は50
+                                    }
                                 } else {
                                     adView.height = 50;
                                     adViewContainer.height = 50;
@@ -489,7 +502,7 @@ function NewsWindow(tabGroup, teamId, teamName) {
             ,separatorColor: "#efefef"
         });
         //順位表データからチーム一覧を取得
-        var standings = new Standings("J", Ti.App.currentStage);
+        var standings = new Standings("J");
         standings.load("seq", {
             success: function(standingsDataList) {
                 try {
@@ -538,6 +551,7 @@ function NewsWindow(tabGroup, teamId, teamName) {
             ,bottom: 0
         });
         if (util.isAndroid()) {
+            closeBtn.backgroundColor = "#ccc";
             closeBtn.color = "black";
         }
         closeBtn.addEventListener("click", function(e){
